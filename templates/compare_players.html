@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1 class="text-center mb-4">Сравнение игроков</h1>
+    {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+    {% if not players %}
+        <form method="POST" action="/compare">
+            <div class="mb-3">
+                <label for="players" class="form-label">Выберите игроков для сравнения (удерживайте Ctrl для множественного выбора):</label>
+                <select name="players" id="players" class="form-select" multiple style="height: 200px;">
+                    {% for player in all_players %}
+                        <option value="{{ player['name'] }}">{{ player['name'] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Сравнить</button>
+        </form>
+    {% else %}
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Сравнительная таблица</h5>
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Имя</th>
+                                        <th>Возраст</th>
+                                        <th>Очки</th>
+                                        <th>Уровень</th>
+                                        <th>Время игры (сек)</th>
+                                        <th>Время реакции (сек)</th>
+                                        <th>Ошибки</th>
+                                        <th>Состояние</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for player in players %}
+                                    <tr>
+                                        <td>{{ player['name'] }}</td>
+                                        <td>{{ player['age'] if player['age'] else 'N/A' }}</td>
+                                        <td>{{ player['total_score'] if player['total_score'] else 'N/A' }}</td>
+                                        <td>{{ player['level_reached'] if player['level_reached'] else 'N/A' }}</td>
+                                        <td>{{ player['total_game_time']|round(1) if player['total_game_time'] else 'N/A' }}</td>
+                                        <td>{{ player['avg_reaction_time']|round(3) if player['avg_reaction_time'] else 'N/A' }}</td>
+                                        <td>{{ player['total_errors'] if player['total_errors'] else 'N/A' }}</td>
+                                        <td>{{ player['state_self_assessment'] if player['state_self_assessment'] else 'N/A' }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">График сравнения</h5>
+                        <canvas id="compareChart" height="100"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <form method="POST" action="/export_compare" class="mt-3">
+            {% for player in players %}
+                <input type="hidden" name="players" value="{{ player['name'] }}">
+            {% endfor %}
+            <button type="submit" class="btn btn-success">Экспортировать в CSV</button>
+        </form>
+        <a href="/compare" class="btn btn-primary mt-3">Вернуться к выбору игроков</a>
+        <script>
+            const chartData = {{ chart_data|safe }};
+            const ctx = document.getElementById('compareChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: chartData.names,
+                    datasets: [
+                        {
+                            label: 'Общий счёт (очки)',
+                            data: chartData.scores,
+                            backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Время игры (сек)',
+                            data: chartData.game_times,
+                            backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Достигнутый уровень',
+                            data: chartData.levels,
+                            backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Значение' }
+                        },
+                        x: {
+                            title: { display: true, text: 'Игроки' }
+                        }
+                    }
+                }
+            });
+        </script>
+    {% endif %}
+{% endblock %}

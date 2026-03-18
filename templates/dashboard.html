@@ -1,0 +1,376 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Аналитический дашборд</h2>
+    <p>Используйте фильтры для настройки отображаемых данных.</p>
+
+    <!-- Фильтры -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Фильтры</h5>
+                    <div class="mb-3">
+                        <label for="ageRange" class="form-label">Возрастной диапазон</label>
+                        <select id="ageRange" class="form-select">
+                            <option value="all" selected>Все возраста</option>
+                            <option value="10-18">10-18 лет</option>
+                            <option value="19-25">19-25 лет</option>
+                            <option value="26-35">26-35 лет</option>
+                            <option value="36+">36+ лет</option>
+                        </select>
+                    </div>
+                    <button id="applyFilters" class="btn btn-primary">Применить фильтры</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Графики -->
+    <div class="row">
+        <!-- Корреляция возраста и времени реакции -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Корреляция возраста и времени реакции</h5>
+                    <canvas id="ageReactionChart" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Сложность уровней -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Сложность уровней (время прохождения)</h5>
+                    <canvas id="levelDifficultyChart" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Распределение игроков по возрасту -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Распределение игроков по возрасту</h5>
+                    <canvas id="ageDistributionChart" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ошибки по уровням -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Среднее количество ошибок по уровням</h5>
+                    <canvas id="levelErrorsChart" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Влияние возраста на количество ошибок -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Влияние возраста на количество ошибок</h5>
+                    <canvas id="ageErrorsChart" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Самооценка состояния игроков -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Самооценка состояния игроков</h5>
+                    <canvas id="selfAssessmentChart" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Прогресс игроков по уровням -->
+        <div class="col-md-12 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Прогресс игроков по уровням</h5>
+                    <canvas id="levelProgressChart" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Глобальные переменные для хранения данных
+    let playersData = [];
+    let levelsData = [];
+    let ageDistributionData = [];
+    let selfAssessmentData = [];
+    let levelProgressData = [];
+
+    // Функция для загрузки данных с API
+    function loadData() {
+        // Загрузка данных игроков
+        fetch('/api/players_data')
+            .then(response => {
+                if (!response.ok) throw new Error('Ошибка загрузки данных игроков');
+                return response.json();
+            })
+            .then(data => {
+                playersData = data;
+                updateCharts();
+                updateAgeErrorsChart();
+            })
+            .catch(error => console.error(error));
+
+        // Загрузка данных по уровням
+        fetch('/api/levels_data')
+            .then(response => {
+                if (!response.ok) throw new Error('Ошибка загрузки данных уровней');
+                return response.json();
+            })
+            .then(data => {
+                levelsData = data;
+                updateLevelCharts();
+            })
+            .catch(error => console.error(error));
+
+        // Загрузка распределения по возрасту
+        fetch('/api/age_distribution')
+            .then(response => {
+                if (!response.ok) throw new Error('Ошибка загрузки данных по возрасту');
+                return response.json();
+            })
+            .then(data => {
+                ageDistributionData = data;
+                updateAgeDistributionChart();
+            })
+            .catch(error => console.error(error));
+
+        // Загрузка данных по самооценке состояния
+        fetch('/api/self_assessment')
+            .then(response => {
+                if (!response.ok) throw new Error('Ошибка загрузки данных по самооценке');
+                return response.json();
+            })
+            .then(data => {
+                selfAssessmentData = data;
+                updateSelfAssessmentChart();
+            })
+            .catch(error => console.error(error));
+
+        // Загрузка данных по прогрессу уровней
+        fetch('/api/level_progress')
+            .then(response => {
+                if (!response.ok) throw new Error('Ошибка загрузки данных по прогрессу уровней');
+                return response.json();
+            })
+            .then(data => {
+                levelProgressData = data;
+                updateLevelProgressChart();
+            })
+            .catch(error => console.error(error));
+    }
+
+    // Функция для обновления графиков на основе фильтров
+    function updateCharts() {
+        const ageRange = document.getElementById('ageRange').value;
+        let filteredData = playersData;
+
+        // Фильтрация данных по возрасту
+        if (ageRange !== 'all') {
+            const [minAge, maxAge] = ageRange.split('-').map(age => parseInt(age.replace('+', '999')));
+            filteredData = playersData.filter(player => player.age >= minAge && player.age <= maxAge);
+        }
+
+        // Обновление графика корреляции возраста и времени реакции
+        const ageReactionCtx = document.getElementById('ageReactionChart').getContext('2d');
+        if (window.ageReactionChartInstance) window.ageReactionChartInstance.destroy();
+        window.ageReactionChartInstance = new Chart(ageReactionCtx, {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: 'Время реакции',
+                    data: filteredData.map(player => ({ x: player.age, y: player.reaction_time })),
+                    backgroundColor: 'rgba(54, 162, 235, 0.6)'
+                }]
+            },
+            options: {
+                scales: {
+                    x: { title: { display: true, text: 'Возраст (лет)' } },
+                    y: { title: { display: true, text: 'Среднее время реакции (сек)' } }
+                }
+            }
+        });
+    }
+
+    // Функция для обновления графика влияния возраста на количество ошибок
+    function updateAgeErrorsChart() {
+        const ageRange = document.getElementById('ageRange').value;
+        let filteredData = playersData;
+
+        // Фильтрация данных по возрасту
+        if (ageRange !== 'all') {
+            const [minAge, maxAge] = ageRange.split('-').map(age => parseInt(age.replace('+', '999')));
+            filteredData = playersData.filter(player => player.age >= minAge && player.age <= maxAge);
+        }
+
+        const ageErrorsCtx = document.getElementById('ageErrorsChart').getContext('2d');
+        if (window.ageErrorsChartInstance) window.ageErrorsChartInstance.destroy();
+        window.ageErrorsChartInstance = new Chart(ageErrorsCtx, {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: 'Количество ошибок vs Возраст',
+                    data: filteredData.map(player => ({ x: player.age, y: player.errors })),
+                    backgroundColor: 'rgba(255, 159, 64, 0.6)'
+                }]
+            },
+            options: {
+                scales: {
+                    x: { title: { display: true, text: 'Возраст (лет)' } },
+                    y: { title: { display: true, text: 'Количество ошибок' } }
+                }
+            }
+        });
+    }
+
+    // Функция для обновления графиков по уровням
+    function updateLevelCharts() {
+        // График времени прохождения уровней
+        const levelDifficultyCtx = document.getElementById('levelDifficultyChart').getContext('2d');
+        if (window.levelDifficultyChartInstance) window.levelDifficultyChartInstance.destroy();
+        window.levelDifficultyChartInstance = new Chart(levelDifficultyCtx, {
+            type: 'bar',
+            data: {
+                labels: levelsData.map(level => `Уровень ${level.level}`),
+                datasets: [{
+                    label: 'Среднее время прохождения (сек)',
+                    data: levelsData.map(level => level.avg_time),
+                    backgroundColor: 'rgba(75, 192, 192, 0.6)'
+                }]
+            },
+            options: {
+                scales: {
+                    x: { title: { display: true, text: 'Уровень' } },
+                    y: { title: { display: true, text: 'Время (сек)' }, beginAtZero: true }
+                }
+            }
+        });
+
+        // График ошибок по уровням
+        const levelErrorsCtx = document.getElementById('levelErrorsChart').getContext('2d');
+        if (window.levelErrorsChartInstance) window.levelErrorsChartInstance.destroy();
+        window.levelErrorsChartInstance = new Chart(levelErrorsCtx, {
+            type: 'bar',
+            data: {
+                labels: levelsData.map(level => `Уровень ${level.level}`),
+                datasets: [{
+                    label: 'Среднее количество ошибок',
+                    data: levelsData.map(level => level.avg_errors),
+                    backgroundColor: 'rgba(255, 99, 132, 0.6)'
+                }]
+            },
+            options: {
+                scales: {
+                    x: { title: { display: true, text: 'Уровень' } },
+                    y: { title: { display: true, text: 'Ошибки' }, beginAtZero: true }
+                }
+            }
+        });
+    }
+
+    // Функция для обновления графика распределения по возрасту
+    function updateAgeDistributionChart() {
+        const ageDistributionCtx = document.getElementById('ageDistributionChart').getContext('2d');
+        if (window.ageDistributionChartInstance) window.ageDistributionChartInstance.destroy();
+        window.ageDistributionChartInstance = new Chart(ageDistributionCtx, {
+            type: 'pie',
+            data: {
+                labels: ageDistributionData.map(group => group.age_group),
+                datasets: [{
+                    label: 'Количество игроков',
+                    data: ageDistributionData.map(group => group.count),
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.6)',
+                        'rgba(54, 162, 235, 0.6)',
+                        'rgba(255, 206, 86, 0.6)',
+                        'rgba(75, 192, 192, 0.6)',
+                        'rgba(153, 102, 255, 0.6)'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' }
+                }
+            }
+        });
+    }
+
+    // Функция для обновления графика самооценки состояния
+    function updateSelfAssessmentChart() {
+        const selfAssessmentCtx = document.getElementById('selfAssessmentChart').getContext('2d');
+        if (window.selfAssessmentChartInstance) window.selfAssessmentChartInstance.destroy();
+        window.selfAssessmentChartInstance = new Chart(selfAssessmentCtx, {
+            type: 'pie',
+            data: {
+                labels: selfAssessmentData.map(group => group.assessment),
+                datasets: [{
+                    label: 'Количество игроков',
+                    data: selfAssessmentData.map(group => group.count),
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.6)',
+                        'rgba(54, 162, 235, 0.6)',
+                        'rgba(255, 206, 86, 0.6)',
+                        'rgba(75, 192, 192, 0.6)',
+                        'rgba(153, 102, 255, 0.6)'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' }
+                }
+            }
+        });
+    }
+
+    // Функция для обновления графика прогресса по уровням
+    function updateLevelProgressChart() {
+        const levelProgressCtx = document.getElementById('levelProgressChart').getContext('2d');
+        if (window.levelProgressChartInstance) window.levelProgressChartInstance.destroy();
+        window.levelProgressChartInstance = new Chart(levelProgressCtx, {
+            type: 'line',
+            data: {
+                labels: levelProgressData.map(level => `Уровень ${level.level}`),
+                datasets: [{
+                    label: 'Количество игроков, завершивших уровень',
+                    data: levelProgressData.map(level => level.player_count),
+                    fill: false,
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                scales: {
+                    x: { title: { display: true, text: 'Уровень' } },
+                    y: { title: { display: true, text: 'Количество игроков' }, beginAtZero: true }
+                }
+            }
+        });
+    }
+
+    // Обработчик события для кнопки применения фильтров
+    document.getElementById('applyFilters').addEventListener('click', function() {
+        updateCharts();
+        updateAgeErrorsChart();
+    });
+
+    // Загрузка данных при открытии страницы
+    window.onload = loadData;
+</script>
+{% endblock %}

@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1 class="text-center mb-4">Список игроков</h1>
+    <div class="mb-3">
+        <input type="text" id="searchInput" class="form-control" placeholder="Поиск по имени...">
+    </div>
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Имя</th>
+                    <th>Возраст</th>
+                    <th>Очки</th>
+                    <th>Уровень</th>
+                    <th>Время игры (сек)</th>
+                    <th>Состояние</th>
+                </tr>
+            </thead>
+            <tbody id="playersTableBody">
+                {% for player in players %}
+                <tr onclick="window.location.href='/player/{{ player['name'] }}'" style="cursor: pointer;">
+                    <td>{{ player['name'] }}</td>
+                    <td>{{ player['age'] if player['age'] else 'N/A' }}</td>
+                    <td>{{ player['total_score'] if player['total_score'] else 'N/A' }}</td>
+                    <td>{{ player['level_reached'] if player['level_reached'] else 'N/A' }}</td>
+                    <td>{{ player['total_game_time']|round(1) if player['total_game_time'] else 'N/A' }}</td>
+                    <td>{{ player['state_self_assessment'] if player['state_self_assessment'] else 'N/A' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="card mb-3">
+    <div class="card-body">
+        <h5 class="card-title">Корреляция возраста и времени реакции</h5>
+        <canvas id="ageReactionChart" style="max-height: 300px;"></canvas>
+    </div>
+</div>
+<script>
+    fetch('/api/players_data')
+        .then(response => response.json())
+        .then(data => {
+            const ctx = document.getElementById('ageReactionChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: 'Время реакции',
+                        data: data.map(player => ({ x: player.age, y: player.reaction_time })),
+                        backgroundColor: 'rgba(54, 162, 235, 0.6)'
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: { title: { display: true, text: 'Возраст (лет)' } },
+                        y: { title: { display: true, text: 'Среднее время реакции (сек)' } }
+                    }
+                }
+            });
+        });
+</script>
+
+    </div>
+    <script>
+        document.getElementById('searchInput').addEventListener('input', function() {
+            const searchTerm = this.value;
+            fetch(`/api/players?search=${encodeURIComponent(searchTerm)}`)
+                .then(response => response.json())
+                .then(data => {
+                    const tbody = document.getElementById('playersTableBody');
+                    tbody.innerHTML = '';
+                    data.forEach(player => {
+                        const row = document.createElement('tr');
+                        row.style.cursor = 'pointer';
+                        row.onclick = () => window.location.href = `/player/${player.name}`;
+                        row.innerHTML = `
+                            <td>${player.name}</td>
+                            <td>${player.age}</td>
+                            <td>${player.total_score}</td>
+                            <td>${player.level_reached}</td>
+                            <td>${player.total_game_time}</td>
+                            <td>${player.state_self_assessment}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                });
+        });
+    </script>
+{% endblock %}

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1 class="text-center mb-4">Анализ игрока: {{ name }}</h1>
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Общая информация</h5>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item">Возраст: {{ player['age'] if player['age'] else 'N/A' }} лет</li>
+                        <li class="list-group-item">Общее время игры: {{ player['total_game_time']|round(1) if player['total_game_time'] else 'N/A' }} сек</li>
+                        <li class="list-group-item">Достигнутый уровень: {{ player['level_reached'] if player['level_reached'] else 'N/A' }}</li>
+                        <li class="list-group-item">Общий счёт: {{ player['total_score'] if player['total_score'] else 'N/A' }} очков</li>
+                        <li class="list-group-item">Среднее время реакции: {{ player['avg_reaction_time']|round(3) if player['avg_reaction_time'] else 'N/A' }} сек</li>
+                        <li class="list-group-item">Общее количество ошибок: {{ player['total_errors'] if player['total_errors'] else 'N/A' }}</li>
+                        <li class="list-group-item">Самооценка состояния: {{ player['state_self_assessment'] if player['state_self_assessment'] else 'N/A' }}</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Статистика по уровням</h5>
+                    {% if levels %}
+                        {% for level in levels %}
+                            <div class="mb-3">
+                                <h6>Уровень {{ level['level'] }}</h6>
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item">Время прохождения: {{ level['completion_time']|round(1) if level['completion_time'] else 'N/A' }} сек</li>
+                                    <li class="list-group-item">Счёт: {{ level['score'] if level['score'] else 'N/A' }} очков</li>
+                                    <li class="list-group-item">Среднее время реакции: {{ level['reaction_time_avg']|round(3) if level['reaction_time_avg'] else 'N/A' }} сек</li>
+                                    <li class="list-group-item">Количество ошибок: {{ level['errors_count'] if level['errors_count'] else 'N/A' }}</li>
+                                    <li class="list-group-item">Время паузы: {{ level['pause_duration']|round(1) if level['pause_duration'] else 'N/A' }} сек</li>
+                                </ul>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <p>Данные по уровням отсутствуют.</p>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Ответы на анкету</h5>
+                    {% if answers %}
+                        {% for answer in answers %}
+                            <div class="mb-2">
+                                <strong>Вопрос:</strong> {{ answer['question_text'] }}<br>
+                                <strong>Ответ:</strong> {{ answer['answer_text'] }}
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <p>Ответы на анкету отсутствуют.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">График времени прохождения уровней</h5>
+                    <canvas id="levelChart" height="100"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <a href="/players" class="btn btn-primary mt-3">Вернуться к списку игроков</a>
+    <a href="/export_player/{{ name }}" class="btn btn-success mt-3">Экспортировать в CSV</a>
+    <script>
+        const chartData = {{ chart_data|safe }};
+        const ctx = document.getElementById('levelChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: chartData.levels,
+                datasets: [{
+                    label: 'Время прохождения (сек)',
+                    data: chartData.times,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        title: { display: true, text: 'Уровень' }
+                    },
+                    y: {
+                        title: { display: true, text: 'Время (сек)' },
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    </script>
+{% endblock %}

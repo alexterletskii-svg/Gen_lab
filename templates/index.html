@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1 class="text-center mb-4">Общая статистика</h1>
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Статистика по игрокам</h5>
+                    <ul class="list-group list-group-flush" id="stats-list">
+                        <li class="list-group-item">Всего игроков: <span id="total_players">...</span></li>
+                        <li class="list-group-item">Средний возраст: <span id="avg_age">...</span> лет</li>
+                        <li class="list-group-item">Среднее время игры: <span id="avg_game_time">...</span> сек</li>
+                        <li class="list-group-item">Средний уровень: <span id="avg_level">...</span></li>
+                        <li class="list-group-item">Средний счёт: <span id="avg_score">...</span> очков</li>
+                        <li class="list-group-item">Среднее время реакции: <span id="avg_reaction">...</span> сек</li>
+                        <li class="list-group-item">Среднее количество ошибок: <span id="avg_errors">...</span></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        fetch('/statistics')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('total_players').textContent = data.total_players;
+                document.getElementById('avg_age').textContent = data.avg_age;
+                document.getElementById('avg_game_time').textContent = data.avg_game_time;
+                document.getElementById('avg_level').textContent = data.avg_level;
+                document.getElementById('avg_score').textContent = data.avg_score;
+                document.getElementById('avg_reaction').textContent = data.avg_reaction;
+                document.getElementById('avg_errors').textContent = data.avg_errors;
+            });
+    </script>
+{% endblock %}

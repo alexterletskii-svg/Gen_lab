@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="container-fluid py-5 bg-gray-50">
+    <h1 class="text-center mb-5 text-3xl font-bold text-gray-800">Анализ прохождения уровней</h1>
+
+    <!-- Таблица статистики по уровням на всю ширину -->
+    <div class="row mb-5">
+      <div class="col-12">
+        <div class="card shadow-sm border-0 rounded-lg overflow-hidden">
+          <div class="card-header bg-gray-100 text-gray-700 border-bottom border-gray-200">
+            <h5 class="card-title mb-0 font-medium">Статистика по уровням</h5>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-striped table-hover mb-0 text-gray-700">
+                <thead class="bg-gray-50 text-gray-600 text-sm">
+                  <tr>
+                    <th class="ps-3">Уровень</th>
+                    <th>Прохождения</th>
+                    <th>Время (сек)</th>
+                    <th>Счёт (очки)</th>
+                    <th>Реакция (сек)</th>
+                    <th>Ошибки</th>
+                    <th>Пауза (сек)</th>
+                  </tr>
+                </thead>
+                <tbody class="text-sm text-gray-600">
+                  {% for level in levels %}
+                  <tr>
+                    <td class="ps-3"><span class="badge bg-gray-200 text-black ">Уровень {{ level['level'] }}</span></td>
+                    <td class="font-medium">{{ level['count'] }}</td>
+                    <td>{{ level['avg_time']|round(1) if level['avg_time'] else 'N/A' }}</td>
+                    <td>{{ level['avg_score']|round(1) if level['avg_score'] else 'N/A' }}</td>
+                    <td>{{ level['avg_reaction']|round(3) if level['avg_reaction'] else 'N/A' }}</td>
+                    <td>{{ level['avg_errors']|round(1) if level['avg_errors'] else 'N/A' }}</td>
+                    <td>{{ level['avg_pause']|round(1) if level['avg_pause'] else 'N/A' }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ключевые метрики -->
+    <div class="row mb-5">
+      <div class="col-12">
+        <div class="card shadow-sm border-0 rounded-lg overflow-hidden">
+          <div class="card-header bg-gray-100 text-gray-700 border-bottom border-gray-200">
+            <h5 class="card-title mb-0 font-medium">Ключевые метрики</h5>
+          </div>
+          <div class="card-body">
+            <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-3">
+              <div class="col">
+                <div class="card bg-gray-100 text-gray-800 p-3 h-100 border-0">
+                  <h6 class="mb-1 text-sm font-medium">Общее время</h6>
+                  <p class="text-2xl font-bold">{{ total_metrics.total_time|round(1) if total_metrics.total_time else 'N/A' }}</p>
+                  <small class="text-gray-500">секунд</small>
+                </div>
+              </div>
+              <div class="col">
+                <div class="card bg-gray-100 text-gray-800 p-3 h-100 border-0">
+                  <h6 class="mb-1 text-sm font-medium">Средний счёт</h6>
+                  <p class="text-2xl font-bold">{{ total_metrics.avg_score|round(1) if total_metrics.avg_score else 'N/A' }}</p>
+                  <small class="text-gray-500">очков</small>
+                </div>
+              </div>
+              <div class="col">
+                <div class="card bg-gray-100 text-gray-800 p-3 h-100 border-0">
+                  <h6 class="mb-1 text-sm font-medium">Время реакции</h6>
+                  <p class="text-2xl font-bold">{{ total_metrics.avg_reaction|round(3) if total_metrics.avg_reaction else 'N/A' }}</p>
+                  <small class="text-gray-500">секунд</small>
+                </div>
+              </div>
+              <div class="col">
+                <div class="card bg-gray-100 text-gray-800 p-3 h-100 border-0">
+                  <h6 class="mb-1 text-sm font-medium">Ошибки</h6>
+                  <p class="text-2xl font-bold">{{ total_metrics.avg_errors|round(1) if total_metrics.avg_errors else 'N/A' }}</p>
+                  <small class="text-gray-500">в среднем</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Графики -->
+    <div class="row row-cols-1 row-cols-lg-2 g-4">
+      <div class="col">
+        <div class="card shadow-sm border-0 rounded-lg overflow-hidden">
+          <div class="card-header bg-gray-100 text-gray-700 border-bottom border-gray-200">
+            <h5 class="card-title mb-0 font-medium">Время прохождения и счёт</h5>
+          </div>
+          <div class="card-body">
+            <canvas id="levelStatsChart" height="80"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="card shadow-sm border-0 rounded-lg overflow-hidden">
+          <div class="card-header bg-gray-100 text-gray-700 border-bottom border-gray-200">
+            <h5 class="card-title mb-0 font-medium">Ошибки и время реакции</h5>
+          </div>
+          <div class="card-body">
+            <canvas id="reactionErrorChart" height="80"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const chartData = {{ chart_data|safe }};
+
+    // График времени и счета
+    const ctx1 = document.getElementById('levelStatsChart').getContext('2d');
+    new Chart(ctx1, {
+      type: 'line',
+      data: {
+        labels: chartData.levels,
+        datasets: [
+          {
+            label: 'Среднее время прохождения (сек)',
+            data: chartData.avg_times,
+            borderColor: 'rgba(52, 211, 153, 1)',
+            backgroundColor: 'rgba(52, 211, 153, 0.2)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4
+          },
+          {
+            label: 'Средний счёт (очки)',
+            data: chartData.avg_scores,
+            borderColor: 'rgba(79, 90, 255, 1)',
+            backgroundColor: 'rgba(79, 90, 255, 0.2)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              color: '#4a5568',
+              font: { size: 12 }
+            }
+          }
+        },
+        scales: {
+          x: {
+            title: { display: true, text: 'Уровень', color: '#4a5568', font: { size: 14 } },
+            ticks: { color: '#4a5568' },
+            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+          },
+          y: {
+            title: { display: true, text: 'Значение', color: '#4a5568', font: { size: 14 } },
+            ticks: { color: '#4a5568' },
+            grid: { color: 'rgba(0, 0, 0, 0.05)' },
+            beginAtZero: true
+          }
+        }
+      }
+    });
+
+    // График ошибок и времени реакции
+    const ctx2 = document.getElementById('reactionErrorChart').getContext('2d');
+    new Chart(ctx2, {
+      type: 'line',
+      data: {
+        labels: chartData.levels,
+        datasets: [
+          {
+            label: 'Среднее время реакции (сек)',
+            data: chartData.avg_reactions,
+            borderColor: 'rgba(52, 211, 153, 1)',
+            backgroundColor: 'rgba(52, 211, 153, 0.2)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4
+          },
+          {
+            label: 'Средние ошибки',
+            data: chartData.avg_errors,
+            borderColor: 'rgba(239, 68, 68, 1)',
+            backgroundColor: 'rgba(239, 68, 68, 0.2)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              color: '#4a5568',
+              font: { size: 12 }
+            }
+          }
+        },
+        scales: {
+          x: {
+            title: { display: true, text: 'Уровень', color: '#4a5568', font: { size: 14 } },
+            ticks: { color: '#4a5568' },
+            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+          },
+          y: {
+            title: { display: true, text: 'Значение', color: '#4a5568', font: { size: 14 } },
+            ticks: { color: '#4a5568' },
+            grid: { color: 'rgba(0, 0, 0, 0.05)' },
+            beginAtZero: true
+          }
+        }
+      }
+    });
+  </script>
+{% endblock %}
