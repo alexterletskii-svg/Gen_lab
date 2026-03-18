@@ -1,0 +1,1230 @@
+import pygame
+import random
+import sqlite3
+import time
+import math
+from datetime import datetime
+
+pygame.init()
+
+WIDTH, HEIGHT = 800, 600
+screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
+pygame.display.set_caption("Генератор лабиринтов - Диагностика состояния")
+
+font_large = pygame.font.SysFont('Arial', 36)
+font_small = pygame.font.SysFont('Arial', 24)
+font_tiny = pygame.font.SysFont('Arial', 18)
+font_medium = pygame.font.SysFont('Arial', 30)
+
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+GRAY = (128, 128, 128)
+LIGHT_GRAY = (200, 200, 200)
+DARK_GRAY = (64, 64, 64)
+BLUE = (0, 100, 255)
+GREEN = (0, 255, 0)
+RED = (255, 0, 0)
+
+# Подключение к базе данных
+conn = sqlite3.connect('game_diagnostics.db')
+db_cursor = conn.cursor()
+
+# Получение вопросов из базы данных
+db_cursor.execute('SELECT question_id, question_text FROM questions')
+questions = db_cursor.fetchall()
+question_options = {
+    1: ["Хорошее", "Нормальное", "Плохое"],  # Настроение
+    2: ["Нет", "Немного", "Сильно"],  # Стресс
+    3: ["Высокий", "Средний", "Низкий"],  # Энергия
+    4: ["Да", "Нет", "Частично"],  # Сон
+    5: ["Да", "Нет"]  # Конфликты
+}
+
+
+class LoadingScreen:
+    def __init__(self):
+        self.loading_stages = [
+            "Генерируем лабиринты....",
+        "Подсчитываем варианты.....",
+        "Подключаем алгоритмы....",
+        "Перемешиваем проходы....",
+        "Создаем тайные тропинки....",
+        "Мозговой штурм в процессе...",
+        "Запутываем тропинки...",
+        "Ищем выход из сложных ситуаций...",
+        "Ловим миньонов для помощи...",
+        "Заполняем пустые комнаты загадками...",
+        "Настраиваем вашу карту приключений...",
+        "Перемешиваем стены и проходы...",
+        "Прячем выход по лучше...",
+        "Плетем паутину загадок...",
+        "Загружаем карту неизвестного...",
+        "Плетем нити судьбы...",
+        "Открываем двери в неизведанное...",
+        "Приоткрываем тайны прошлого...",
+        "Настраиваем загадочные механизмы..."
+        ]
+        self.current_stage = 0
+        self.progress = 0
+        self.target_progress = 0
+        self.animation_time = 0
+        self.dots_animation = 0
+        self.stage_start_time = 0
+
+    def update(self, dt):
+        self.animation_time += dt
+        self.dots_animation += dt * 3
+
+        # Плавное увеличение прогресса
+        if self.progress < self.target_progress:
+            self.progress += min(dt * 30, self.target_progress - self.progress)
+
+        # Автоматическое переключение этапов
+        if time.time() - self.stage_start_time > 0.8:
+            self.next_stage()
+
+    def next_stage(self):
+        if self.current_stage < len(self.loading_stages) - 1:
+            self.current_stage += 1
+            self.target_progress = (self.current_stage + 1) * (100 / len(self.loading_stages))
+            self.stage_start_time = time.time()
+
+    def draw(self, screen):
+        screen.fill(BLACK)
+
+        # Заголовок
+        title_text = font_large.render("Загрузка игры", True, WHITE)
+        screen.blit(title_text, (WIDTH // 2 - title_text.get_width() // 2, HEIGHT // 2 - 120))
+
+        # Текущий этап с анимированными точками
+        dots_count = int(self.dots_animation) % 4
+        dots = "." * dots_count
+        stage_text = font_medium.render(f"{self.loading_stages[self.current_stage]}{dots}", True, LIGHT_GRAY)
+        screen.blit(stage_text, (WIDTH // 2 - stage_text.get_width() // 2, HEIGHT // 2 - 70))
+
+        # Прогресс-бар
+        bar_width = 400
+        bar_height = 20
+        bar_x = WIDTH // 2 - bar_width // 2
+        bar_y = HEIGHT // 2 - 20
+
+        # Фон прогресс-бара
+        pygame.draw.rect(screen, DARK_GRAY, (bar_x, bar_y, bar_width, bar_height))
+        pygame.draw.rect(screen, WHITE, (bar_x, bar_y, bar_width, bar_height), 2)
+
+        # Заполнение прогресс-бара
+        fill_width = int((self.progress / 100) * bar_width)
+        if fill_width > 0:
+            # Градиент от синего к зеленому
+            for i in range(fill_width):
+                color_ratio = i / bar_width
+                r = int(BLUE[0] * (1 - color_ratio) + GREEN[0] * color_ratio)
+                g = int(BLUE[1] * (1 - color_ratio) + GREEN[1] * color_ratio)
+                b = int(BLUE[2] * (1 - color_ratio) + GREEN[2] * color_ratio)
+                pygame.draw.rect(screen, (r, g, b), (bar_x + i, bar_y, 1, bar_height))
+
+        # Анимированное свечение
+        if fill_width > 0:
+            glow_offset = int(math.sin(self.animation_time * 4) * 3)
+            pygame.draw.rect(screen, WHITE, (bar_x + fill_width - 5 + glow_offset, bar_y, 5, bar_height))
+
+        # Процент загрузки
+        percent_text = font_small.render(f"{int(self.progress)}%", True, WHITE)
+        screen.blit(percent_text, (WIDTH // 2 - percent_text.get_width() // 2, HEIGHT // 2 + 20))
+
+        # Анимированный спиннер
+        self.draw_spinner(screen, WIDTH // 2, HEIGHT // 2 + 80)
+
+        # Подсказка
+        hint_text = font_tiny.render("Пожалуйста, подождите...", True, GRAY)
+        screen.blit(hint_text, (WIDTH // 2 - hint_text.get_width() // 2, HEIGHT // 2 + 120))
+
+    def draw_spinner(self, screen, x, y):
+        radius = 15
+        thickness = 3
+        segments = 8
+
+        for i in range(segments):
+            angle = (self.animation_time * 2 + i * (2 * math.pi / segments)) % (2 * math.pi)
+            alpha = max(0, 1 - (i / segments))
+
+            start_angle = angle
+            end_angle = angle + (2 * math.pi / segments * 0.8)
+
+            # Создаем точки для дуги
+            points = []
+            for j in range(10):
+                a = start_angle + j * (end_angle - start_angle) / 9
+                px = x + math.cos(a) * radius
+                py = y + math.sin(a) * radius
+                points.append((px, py))
+
+            # Рисуем дугу
+            if len(points) > 1:
+                color = (int(255 * alpha), int(255 * alpha), int(255 * alpha))
+                pygame.draw.lines(screen, color, False, points, thickness)
+
+    def is_complete(self):
+        return self.current_stage >= len(self.loading_stages) - 1 and self.progress >= 99
+
+
+class Maze:
+    def __init__(self, cols, rows, complexity):
+        self.cols = cols
+        self.rows = rows
+        self.grid = [[1 for _ in range(cols)] for _ in range(rows)]
+        self.complexity = complexity
+        self.generate_maze()
+
+    def generate_maze(self):
+        stack = []
+        current_cell = (0, 0)
+        self.grid[0][0] = 0
+        stack.append(current_cell)
+
+        while stack:
+            neighbors = self.get_neighbors(current_cell)
+            if neighbors:
+                neighbor = random.choice(neighbors)
+                self.remove_wall(current_cell, neighbor)
+                self.grid[neighbor[1]][neighbor[0]] = 0
+                stack.append(neighbor)
+                current_cell = neighbor
+            else:
+                current_cell = stack.pop()
+
+    def get_neighbors(self, cell):
+        neighbors = []
+        directions = [(-2, 0), (2, 0), (0, -2), (0, 2)]
+        for dx, dy in directions:
+            nx, ny = cell[0] + dx, cell[1] + dy
+            if 0 <= nx < self.cols and 0 <= ny < self.rows and self.grid[ny][nx] == 1:
+                neighbors.append((nx, ny))
+        return neighbors
+
+    def remove_wall(self, current_cell, neighbor):
+        x = (current_cell[0] + neighbor[0]) // 2
+        y = (current_cell[1] + neighbor[1]) // 2
+        self.grid[y][x] = 0
+
+
+def main():
+    global screen, WIDTH, HEIGHT
+
+    clock = pygame.time.Clock()
+    running = True
+    game_state = "start_screen"
+    user_name = ""
+    user_age = ""
+    maze = None
+    player_pos = [0, 0]
+    cell_size = 20
+    level = 1
+    score = 0
+    start_time = 0
+    game_start_time = 0
+    elapsed_time = 0
+    total_game_time = 0
+    last_key_time = time.time()
+    reaction_times = []
+    errors = 0
+    player_id = None
+    current_question_index = 0
+    answers = []
+    pause_start_time = 0
+    pause_duration = 0
+    waiting_for_continue = False
+
+    # Переменные для нового прелоадера
+    loading_screen = None
+    last_time = time.time()
+
+    messages = [
+        "Генерируем лабиринты....",
+        "Подсчитываем варианты.....",
+        "Подключаем алгоритмы....",
+        "Перемешиваем проходы....",
+        "Создаем тайные тропинки....",
+        "Мозговой штурм в процессе...",
+        "Запутываем тропинки...",
+        "Ищем выход из сложных ситуаций...",
+        "Ловим миньонов для помощи...",
+        "Заполняем пустые комнаты загадками...",
+        "Настраиваем вашу карту приключений...",
+        "Перемешиваем стены и проходы...",
+        "Прячем выход по лучше...",
+        "Плетем паутину загадок...",
+        "Загружаем карту неизвестного...",
+        "Плетем нити судьбы...",
+        "Открываем двери в неизведанное...",
+        "Приоткрываем тайны прошлого...",
+        "Настраиваем загадочные механизмы..."
+    ]
+
+    while running:
+        current_time = time.time()
+        dt = current_time - last_time
+        last_time = current_time
+
+        # Обработка событий
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+                if player_id and game_start_time:
+                    total_game_time = time.time() - game_start_time
+                    db_cursor.execute('UPDATE players SET total_game_time = ? WHERE id = ?',
+                                      (total_game_time, player_id))
+                    conn.commit()
+            elif event.type == pygame.VIDEORESIZE:
+                WIDTH, HEIGHT = event.w, event.h
+                screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
+                if maze:
+                    cell_size = min(WIDTH / maze.cols, HEIGHT / maze.rows)
+            elif game_state == "start_screen":
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    start_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2, 200, 50)
+                    score_list_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 60, 200, 50)
+                    if start_button.collidepoint(event.pos):
+                        game_state = "enter_name"
+                    elif score_list_button.collidepoint(event.pos):
+                        game_state = "score_screen"
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        running = False
+
+            elif game_state == "enter_name":
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN and user_name != "":
+                        game_state = "enter_age"
+                    elif event.key == pygame.K_BACKSPACE:
+                        user_name = user_name[:-1]
+                    else:
+                        user_name += event.unicode
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        game_state = "start_screen"
+                        user_name = ""
+
+            elif game_state == "enter_age":
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN and user_age != "":
+                        try:
+                            age_int = int(user_age)
+                            if age_int > 0 and age_int < 150:
+                                game_state = "questionnaire"
+                                current_question_index = 0
+                                answers = []
+                            else:
+                                user_age = ""
+                        except ValueError:
+                            user_age = ""
+                    elif event.key == pygame.K_BACKSPACE:
+                        user_age = user_age[:-1]
+                    elif event.unicode.isdigit():
+                        user_age += event.unicode
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        game_state = "enter_name"
+                        user_age = ""
+
+            elif game_state == "questionnaire":
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    options = question_options[questions[current_question_index][0]]
+                    button_height = 50
+                    start_y = HEIGHT // 2 - (len(options) * button_height) // 2
+                    for i, option in enumerate(options):
+                        button = pygame.Rect(WIDTH // 2 - 100, start_y + i * button_height, 200, button_height - 10)
+                        if button.collidepoint(event.pos):
+                            answers.append((questions[current_question_index][0], option))
+                            if current_question_index < len(questions) - 1:
+                                current_question_index += 1
+                            else:
+                                # Сохранение игрока в базу данных с возрастом
+                                db_cursor.execute(
+                                    'INSERT INTO players (name, state_self_assessment, age) VALUES (?, ?, ?)',
+                                    (user_name, answers[0][1], int(user_age)))
+                                conn.commit()
+                                player_id = db_cursor.lastrowid
+                                # Сохранение ответов в базу данных
+                                for q_id, answer in answers:
+                                    db_cursor.execute(
+                                        'INSERT INTO answers (player_id, question_id, answer_text) VALUES (?, ?, ?)',
+                                        (player_id, q_id, answer))
+                                conn.commit()
+                                game_state = "loading_screen"
+                                loading_screen = LoadingScreen()
+                                game_start_time = time.time()
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        game_state = "enter_age"
+                        answers = []
+                        current_question_index = 0
+
+            elif game_state == "game":
+                if event.type == pygame.KEYDOWN:
+                    current_time = time.time()
+                    reaction_time = current_time - last_key_time
+                    reaction_times.append(reaction_time)
+                    last_key_time = current_time
+                    dx, dy = 0, 0
+                    if event.key == pygame.K_LEFT:
+                        dx = -1
+                    elif event.key == pygame.K_RIGHT:
+                        dx = 1
+                    elif event.key == pygame.K_UP:
+                        dy = -1
+                    elif event.key == pygame.K_DOWN:
+                        dy = 1
+                    new_x = player_pos[0] + dx
+                    new_y = player_pos[1] + dy
+                    if 0 <= new_x < maze.cols and 0 <= new_y < maze.rows:
+                        if maze.grid[new_y][new_x] == 0:
+                            player_pos = [new_x, new_y]
+                        else:
+                            errors += 1
+
+            elif game_state == "continue_prompt":
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    continue_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 50, 200, 50)
+                    end_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 110, 200, 50)
+                    if continue_button.collidepoint(event.pos):
+                        pause_duration = time.time() - pause_start_time
+                        db_cursor.execute('UPDATE level_stats SET pause_duration = ? WHERE player_id = ? AND level = ?',
+                                          (pause_duration, player_id, level))
+                        conn.commit()
+                        game_state = "loading_screen"
+                        loading_screen = LoadingScreen()
+                        waiting_for_continue = False
+                    elif end_button.collidepoint(event.pos):
+                        total_game_time = time.time() - game_start_time
+                        db_cursor.execute('UPDATE players SET total_game_time = ? WHERE id = ?',
+                                          (total_game_time, player_id))
+                        conn.commit()
+                        game_state = "start_screen"
+                        maze = None
+                        player_id = None
+                        waiting_for_continue = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN:
+                        pause_duration = time.time() - pause_start_time
+                        db_cursor.execute('UPDATE level_stats SET pause_duration = ? WHERE player_id = ? AND level = ?',
+                                          (pause_duration, player_id, level))
+                        conn.commit()
+                        game_state = "loading_screen"
+                        loading_screen = LoadingScreen()
+                        waiting_for_continue = False
+                    elif event.key == pygame.K_ESCAPE:
+                        total_game_time = time.time() - game_start_time
+                        db_cursor.execute('UPDATE players SET total_game_time = ? WHERE id = ?',
+                                          (total_game_time, player_id))
+                        conn.commit()
+                        game_state = "start_screen"
+                        maze = None
+                        player_id = None
+                        waiting_for_continue = False
+
+            elif game_state == "score_screen":
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    return_button = pygame.Rect(WIDTH - 200, HEIGHT - 60, 180, 50)
+                    if return_button.collidepoint(event.pos):
+                        if maze:
+                            game_state = "game"
+                        else:
+                            game_state = "start_screen"
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    if game_state == "game":
+                        total_game_time = time.time() - game_start_time
+                        db_cursor.execute('UPDATE players SET total_game_time = ? WHERE id = ?',
+                                          (total_game_time, player_id))
+                        conn.commit()
+                        game_state = "start_screen"
+                    elif game_state == "score_screen":
+                        if maze:
+                            game_state = "game"
+                        else:
+                            game_state = "start_screen"
+
+        # Отрисовка экранов
+        if game_state == "start_screen":
+            screen.fill(BLACK)
+            title_text = font_large.render("Добро пожаловать в Генератор лабиринтов!", True, WHITE)
+            start_text = font_small.render("Нажмите 'Начать', чтобы продолжить.", True, WHITE)
+            start_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2, 200, 50)
+            pygame.draw.rect(screen, WHITE, start_button)
+            button_text = font_small.render("Начать", True, BLACK)
+            button_text_rect = button_text.get_rect(center=start_button.center)
+            screen.blit(button_text, button_text_rect)
+
+            score_list_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 60, 200, 50)
+            pygame.draw.rect(screen, WHITE, score_list_button)
+            score_list_text = font_small.render("Список очков", True, BLACK)
+            score_list_text_rect = score_list_text.get_rect(center=score_list_button.center)
+            screen.blit(score_list_text, score_list_text_rect)
+
+            screen.blit(title_text, (WIDTH // 2 - title_text.get_width() // 2, HEIGHT // 2 - 100))
+            screen.blit(start_text, (WIDTH // 2 - start_text.get_width() // 2, HEIGHT // 2 - 50))
+
+        elif game_state == "enter_name":
+            screen.fill(BLACK)
+            prompt_text = font_small.render("Введите ваше имя:", True, WHITE)
+            name_text = font_small.render(user_name, True, WHITE)
+            cursor_time = time.time() % 1
+            input_cursor = "|" if cursor_time < 0.5 else ""
+            cursor_text = font_small.render(input_cursor, True, WHITE)
+            screen.blit(prompt_text, (WIDTH // 2 - prompt_text.get_width() // 2, HEIGHT // 2 - 50))
+
+            input_box = pygame.Rect(WIDTH // 2 - 150, HEIGHT // 2 - 15, 300, 30)
+            pygame.draw.rect(screen, WHITE, input_box, 2)
+            name_text_pos = (input_box.x + 5, input_box.y + (input_box.height - name_text.get_height()) // 2)
+            screen.blit(name_text, name_text_pos)
+            cursor_text_pos = (name_text_pos[0] + name_text.get_width(), name_text_pos[1])
+            screen.blit(cursor_text, cursor_text_pos)
+
+        elif game_state == "enter_age":
+            screen.fill(BLACK)
+            prompt_text = font_small.render("Введите ваш возраст (полных лет):", True, WHITE)
+            age_text = font_small.render(user_age, True, WHITE)
+            cursor_time = time.time() % 1
+            input_cursor = "|" if cursor_time < 0.5 else ""
+            cursor_text = font_small.render(input_cursor, True, WHITE)
+            screen.blit(prompt_text, (WIDTH // 2 - prompt_text.get_width() // 2, HEIGHT // 2 - 50))
+
+            input_box = pygame.Rect(WIDTH // 2 - 150, HEIGHT // 2 - 15, 300, 30)
+            pygame.draw.rect(screen, WHITE, input_box, 2)
+            age_text_pos = (input_box.x + 5, input_box.y + (input_box.height - age_text.get_height()) // 2)
+            screen.blit(age_text, age_text_pos)
+            cursor_text_pos = (age_text_pos[0] + age_text.get_width(), age_text_pos[1])
+            screen.blit(cursor_text, cursor_text_pos)
+
+        elif game_state == "questionnaire":
+            screen.fill(BLACK)
+            question_text = font_small.render(questions[current_question_index][1], True, WHITE)
+            screen.blit(question_text, (WIDTH // 2 - question_text.get_width() // 2, HEIGHT // 2 - 100))
+
+            options = question_options[questions[current_question_index][0]]
+            button_height = 50
+            start_y = HEIGHT // 2 - (len(options) * button_height) // 2
+            for i, option in enumerate(options):
+                button = pygame.Rect(WIDTH // 2 - 100, start_y + i * button_height, 200, button_height - 10)
+                pygame.draw.rect(screen, WHITE, button)
+                option_text = font_small.render(option, True, BLACK)
+                option_text_rect = option_text.get_rect(center=button.center)
+                screen.blit(option_text, option_text_rect)
+
+        elif game_state == "loading_screen":
+            if loading_screen:
+                loading_screen.update(dt)
+                loading_screen.draw(screen)
+
+                # Проверка завершения загрузки
+                if loading_screen.is_complete():
+                    game_state = "game"
+                    cols = rows = level * 2 + 5
+                    maze = Maze(cols, rows, level)
+                    player_pos = [0, 0]
+                    cell_size = min(WIDTH / cols, HEIGHT / rows)
+                    start_time = time.time()
+                    last_key_time = time.time()
+                    reaction_times = []
+                    errors = 0
+                    loading_screen = None
+
+        elif game_state == "game":
+            screen.fill(BLACK)
+            elapsed_time = time.time() - start_time
+
+            offset_x = (WIDTH - maze.cols * cell_size) / 2
+            offset_y = (HEIGHT - maze.rows * cell_size) / 2
+
+            for y in range(maze.rows):
+                for x in range(maze.cols):
+                    rect = pygame.Rect(int(offset_x + x * cell_size), int(offset_y + y * cell_size), int(cell_size),
+                                       int(cell_size))
+                    if maze.grid[y][x] == 1:
+                        pygame.draw.rect(screen, WHITE, rect)
+
+            start_rect = pygame.Rect(int(offset_x), int(offset_y), int(cell_size), int(cell_size))
+            pygame.draw.rect(screen, (0, 0, 255), start_rect)
+
+            exit_rect = pygame.Rect(int(offset_x + (maze.cols - 1) * cell_size),
+                                    int(offset_y + (maze.rows - 1) * cell_size), int(cell_size), int(cell_size))
+            pygame.draw.rect(screen, (0, 255, 0), exit_rect)
+
+            player_rect = pygame.Rect(int(offset_x + player_pos[0] * cell_size),
+                                      int(offset_y + player_pos[1] * cell_size), int(cell_size), int(cell_size))
+            pygame.draw.rect(screen, (255, 0, 0), player_rect)
+
+            level_text = font_small.render(f"Уровень: {level}", True, WHITE)
+            time_text = font_small.render(f"Время: {int(elapsed_time)} сек", True, WHITE)
+            screen.blit(level_text, (10, 10))
+            screen.blit(time_text, (10, 40))
+
+            if player_pos == [maze.cols - 1, maze.rows - 1]:
+                level_score = int(1000 / (elapsed_time + 1) * level)
+                score += level_score
+                avg_reaction_time = sum(reaction_times) / len(reaction_times) if reaction_times else 0
+
+                db_cursor.execute(
+                    'INSERT INTO level_stats (player_id, level, completion_time, score, reaction_time_avg, errors_count) VALUES (?, ?, ?, ?, ?, ?)',
+                    (player_id, level, elapsed_time, level_score, avg_reaction_time, errors))
+                conn.commit()
+
+                db_cursor.execute(
+                    'UPDATE players SET total_time = ?, total_score = ?, level_reached = ?, avg_reaction_time = ?, total_errors = ? WHERE id = ?',
+                    (elapsed_time, score, level, avg_reaction_time, errors, player_id))
+                conn.commit()
+
+                game_state = "continue_prompt"
+                pause_start_time = time.time()
+                waiting_for_continue = True
+                level += 1
+
+        elif game_state == "continue_prompt":
+            screen.fill(BLACK)
+            report_title = font_large.render("Уровень пройден!", True, WHITE)
+            continue_text = font_small.render("Хотите продолжить?", True, WHITE)
+            hint_text = font_tiny.render("Enter - Продолжить, Esc - Завершить", True, WHITE)
+            continue_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 50, 200, 50)
+            end_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 110, 200, 50)
+            pygame.draw.rect(screen, WHITE, continue_button)
+            pygame.draw.rect(screen, WHITE, end_button)
+            button_text_continue = font_small.render("Продолжить", True, BLACK)
+            button_text_end = font_small.render("Завершить", True, BLACK)
+            button_text_continue_rect = button_text_continue.get_rect(center=continue_button.center)
+            button_text_end_rect = button_text_end.get_rect(center=end_button.center)
+            screen.blit(report_title, (WIDTH // 2 - report_title.get_width() // 2, HEIGHT // 2 - 50))
+            screen.blit(continue_text, (WIDTH // 2 - continue_text.get_width() // 2, HEIGHT // 2))
+            screen.blit(hint_text, (WIDTH // 2 - hint_text.get_width() // 2, HEIGHT // 2 + 170))
+            screen.blit(button_text_continue, button_text_continue_rect)
+            screen.blit(button_text_end, button_text_end_rect)
+
+        elif game_state == "score_screen":
+            screen.fill(BLACK)
+            db_cursor.execute(
+                'SELECT id, name, total_score, state_self_assessment, age, total_game_time FROM players ORDER BY total_score DESC LIMIT 10')
+            records = db_cursor.fetchall()
+
+            y_offset = 50
+            title_text = font_large.render("Таблица рекордов", True, WHITE)
+            screen.blit(title_text, (WIDTH // 2 - title_text.get_width() // 2, 10))
+            for record in records:
+                time_str = f"{int(record[5])} сек" if record[5] is not None else "N/A"
+                record_text = font_small.render(
+                    f"{record[1]}: {record[2]} очков | Состояние: {record[3]} | Возраст: {record[4]} | Время игры: {time_str}",
+                    True, WHITE)
+                screen.blit(record_text, (50, y_offset))
+                y_offset += 30
+
+            return_button = pygame.Rect(WIDTH - 200, HEIGHT - 60, 180, 50)
+            pygame.draw.rect(screen, WHITE, return_button)
+            return_text = font_small.render("Вернуться", True, BLACK)
+            return_text_rect = return_text.get_rect(center=return_button.center)
+            screen.blit(return_text, return_text_rect)
+
+        pygame.display.flip()
+        clock.tick(60)
+
+    pygame.quit()
+    conn.close()
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import pygame
+import random
+import sqlite3
+import time
+import math
+from datetime import datetime
+
+pygame.init()
+
+WIDTH, HEIGHT = 800, 600
+screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
+pygame.display.set_caption("Генератор лабиринтов - Диагностика состояния")
+
+font_large = pygame.font.SysFont('Arial', 36)
+font_small = pygame.font.SysFont('Arial', 24)
+font_tiny = pygame.font.SysFont('Arial', 18)
+
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+
+# # Подключение к базе данных
+# conn = sqlite3.connect('game_diagnostics.db')
+# db_cursor = conn.cursor()
+#
+# # Получение вопросов из базы данных
+# db_cursor.execute('SELECT question_id, question_text FROM questions')
+# questions = db_cursor.fetchall()
+# question_options = {
+#     1: ["Хорошее", "Нормальное", "Плохое"],  # Настроение
+#     2: ["Нет", "Немного", "Сильно"],  # Стресс
+#     3: ["Высокий", "Средний", "Низкий"],  # Энергия
+#     4: ["Да", "Нет", "Частично"],  # Сон
+#     5: ["Да", "Нет"]  # Конфликты
+# }
+
+# Подключение к базе данных
+conn = sqlite3.connect('game_diagnostics.db')
+db_cursor = conn.cursor()
+
+# Получение вопросов из базы данных
+db_cursor.execute('SELECT question_id, question_text FROM questions')
+questions = db_cursor.fetchall()
+
+# Формирование словаря с вариантами ответов на основе данных из таблицы answer_options
+question_options = {}
+for question in questions:
+    question_id = question[0]
+    db_cursor.execute('SELECT option_text FROM answer_options WHERE question_id = ?', (question_id,))
+    options = [row[0] for row in db_cursor.fetchall()]
+    question_options[question_id] = options if options else ["Да", "Нет"]  # Запасной вариант, если вариантов нет
+
+
+class Maze:
+    def __init__(self, cols, rows, complexity):
+        self.cols = cols
+        self.rows = rows
+        self.grid = [[1 for _ in range(cols)] for _ in range(rows)]
+        self.complexity = complexity
+        self.generate_maze()
+
+    def generate_maze(self):
+        stack = []
+        current_cell = (0, 0)
+        self.grid[0][0] = 0
+        stack.append(current_cell)
+
+        while stack:
+            neighbors = self.get_neighbors(current_cell)
+            if neighbors:
+                neighbor = random.choice(neighbors)
+                self.remove_wall(current_cell, neighbor)
+                self.grid[neighbor[1]][neighbor[0]] = 0
+                stack.append(neighbor)
+                current_cell = neighbor
+            else:
+                current_cell = stack.pop()
+
+    def get_neighbors(self, cell):
+        neighbors = []
+        directions = [(-2, 0), (2, 0), (0, -2), (0, 2)]
+        for dx, dy in directions:
+            nx, ny = cell[0] + dx, cell[1] + dy
+            if 0 <= nx < self.cols and 0 <= ny < self.rows and self.grid[ny][nx] == 1:
+                neighbors.append((nx, ny))
+        return neighbors
+
+    def remove_wall(self, current_cell, neighbor):
+        x = (current_cell[0] + neighbor[0]) // 2
+        y = (current_cell[1] + neighbor[1]) // 2
+        self.grid[y][x] = 0
+
+
+def main():
+    global screen, WIDTH, HEIGHT
+
+    clock = pygame.time.Clock()
+    running = True
+    game_state = "start_screen"
+    user_name = ""
+    user_age = ""
+    maze = None
+    player_pos = [0, 0]
+    cell_size = 20
+    level = 1
+    score = 0
+    start_time = 0
+    game_start_time = 0  # Время начала всей игры
+    elapsed_time = 0
+    total_game_time = 0  # Общее время игры
+    last_key_time = time.time()  # Для измерения времени реакции
+    reaction_times = []  # Список времени реакции
+    errors = 0  # Счётчик ошибок (попыток пройти через стену)
+    player_id = None  # ID игрока в базе данных
+    current_question_index = 0  # Текущий вопрос анкеты
+    answers = []  # Список ответов игрока на вопросы анкеты
+    pause_start_time = 0  # Время начала паузы
+    pause_duration = 0  # Продолжительность паузы
+    waiting_for_continue = False  # Флаг ожидания продолжения
+
+    # Параметры прелоадера
+    preloader_radius = 50  # Радиус круга
+    preloader_dot_radius = 10  # Радиус каждой точки
+    preloader_num_dots = 8  # Количество точек
+    preloader_speed = 0.05  # Скорость вращения
+    preloader_center_x = WIDTH // 2  # Центр по X
+    preloader_center_y = HEIGHT // 2  # Центр по Y
+    preloader_angle = 0  # Начальный угол для анимации
+
+    messages = [
+        "Генерируем лабиринты....",
+        "Подсчитываем варианты.....",
+        "Подключаем алгоритмы....",
+        "Перемешиваем проходы....",
+        "Создаем тайные тропинки....",
+        "Мозговой штурм в процессе...",
+        "Запутываем тропинки...",
+        "Ищем выход из сложных ситуаций...",
+        "Ловим миньонов для помощи...",
+        "Заполняем пустые комнаты загадками...",
+        "Настраиваем вашу карту приключений...",
+        "Перемешиваем стены и проходы...",
+        "Прячем выход по лучше...",
+        "Плетем паутину загадок...",
+        "Загружаем карту неизвестного...",
+        "Плетем нити судьбы...",
+        "Открываем двери в неизведанное...",
+        "Приоткрываем тайны прошлого...",
+        "Настраиваем загадочные механизмы..."
+    ]
+
+    while running:
+        # Обработка событий
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+                if player_id and game_start_time:
+                    total_game_time = time.time() - game_start_time
+                    db_cursor.execute('UPDATE players SET total_game_time = ? WHERE id = ?',
+                                      (total_game_time, player_id))
+                    conn.commit()
+            elif event.type == pygame.VIDEORESIZE:
+                WIDTH, HEIGHT = event.w, event.h
+                screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
+                if maze:
+                    cell_size = min(WIDTH / maze.cols, HEIGHT / maze.rows)
+                preloader_center_x = WIDTH // 2
+                preloader_center_y = HEIGHT // 2
+            elif game_state == "start_screen":
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    start_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2, 200, 50)
+                    score_list_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 60, 200, 50)
+                    if start_button.collidepoint(event.pos):
+                        game_state = "enter_name"
+                    elif score_list_button.collidepoint(event.pos):
+                        game_state = "score_screen"
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        running = False
+
+            elif game_state == "enter_name":
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN and user_name != "":
+                        game_state = "enter_age"
+                    elif event.key == pygame.K_BACKSPACE:
+                        user_name = user_name[:-1]
+                    else:
+                        user_name += event.unicode
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        game_state = "start_screen"
+                        user_name = ""
+
+            elif game_state == "enter_age":
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN and user_age != "":
+                        try:
+                            age_int = int(user_age)
+                            if age_int > 0 and age_int < 150:  # Проверка на разумный возраст
+                                game_state = "questionnaire"
+                                current_question_index = 0
+                                answers = []
+                            else:
+                                user_age = ""  # Сброс, если возраст нереалистичный
+                        except ValueError:
+                            user_age = ""  # Сброс, если введено не число
+                    elif event.key == pygame.K_BACKSPACE:
+                        user_age = user_age[:-1]
+                    elif event.unicode.isdigit():
+                        user_age += event.unicode
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        game_state = "enter_name"
+                        user_age = ""
+
+            elif game_state == "questionnaire":
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    options = question_options[questions[current_question_index][0]]
+                    button_height = 50
+                    start_y = HEIGHT // 2 - (len(options) * button_height) // 2
+                    for i, option in enumerate(options):
+                        button = pygame.Rect(WIDTH // 2 - 100, start_y + i * button_height, 200, button_height - 10)
+                        if button.collidepoint(event.pos):
+                            answers.append((questions[current_question_index][0], option))
+                            if current_question_index < len(questions) - 1:
+                                current_question_index += 1
+                            else:
+                                # Сохранение игрока в базу данных с возрастом
+                                db_cursor.execute(
+                                    'INSERT INTO players (name, state_self_assessment, age) VALUES (?, ?, ?)',
+                                    (user_name, answers[0][1], int(user_age)))
+                                conn.commit()
+                                player_id = db_cursor.lastrowid
+                                # Сохранение ответов в базу данных
+                                for q_id, answer in answers:
+                                    db_cursor.execute(
+                                        'INSERT INTO answers (player_id, question_id, answer_text) VALUES (?, ?, ?)',
+                                        (player_id, q_id, answer))
+                                conn.commit()
+                                game_state = "loading_screen"
+                                loading_start = time.time()
+                                message_change_time = time.time()
+                                current_message = random.choice(messages)
+                                game_start_time = time.time()  # Начало отсчёта общего времени игры
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        game_state = "enter_age"
+                        answers = []
+                        current_question_index = 0
+
+            elif game_state == "game":
+                if event.type == pygame.KEYDOWN:
+                    current_time = time.time()
+                    reaction_time = current_time - last_key_time
+                    reaction_times.append(reaction_time)
+                    last_key_time = current_time
+                    dx, dy = 0, 0
+                    if event.key == pygame.K_LEFT:
+                        dx = -1
+                    elif event.key == pygame.K_RIGHT:
+                        dx = 1
+                    elif event.key == pygame.K_UP:
+                        dy = -1
+                    elif event.key == pygame.K_DOWN:
+                        dy = 1
+                    new_x = player_pos[0] + dx
+                    new_y = player_pos[1] + dy
+                    if 0 <= new_x < maze.cols and 0 <= new_y < maze.rows:
+                        if maze.grid[new_y][new_x] == 0:
+                            player_pos = [new_x, new_y]
+                        else:
+                            errors += 1  # Увеличиваем счётчик ошибок при попытке пройти через стену
+
+            elif game_state == "continue_prompt":
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    continue_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 50, 200, 50)
+                    end_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 110, 200, 50)
+                    if continue_button.collidepoint(event.pos):
+                        pause_duration = time.time() - pause_start_time
+                        # Сохранение времени паузы в статистику уровня
+                        db_cursor.execute('UPDATE level_stats SET pause_duration = ? WHERE player_id = ? AND level = ?',
+                                          (pause_duration, player_id, level))
+                        conn.commit()
+                        game_state = "loading_screen"
+                        loading_start = time.time()
+                        message_change_time = time.time()
+                        current_message = random.choice(messages)
+                        waiting_for_continue = False
+                    elif end_button.collidepoint(event.pos):
+                        total_game_time = time.time() - game_start_time
+                        db_cursor.execute('UPDATE players SET total_game_time = ? WHERE id = ?',
+                                          (total_game_time, player_id))
+                        conn.commit()
+                        game_state = "start_screen"
+                        maze = None
+                        player_id = None
+                        waiting_for_continue = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN:
+                        pause_duration = time.time() - pause_start_time
+                        # Сохранение времени паузы в статистику уровня
+                        db_cursor.execute('UPDATE level_stats SET pause_duration = ? WHERE player_id = ? AND level = ?',
+                                          (pause_duration, player_id, level))
+                        conn.commit()
+                        game_state = "loading_screen"
+                        loading_start = time.time()
+                        message_change_time = time.time()
+                        current_message = random.choice(messages)
+                        waiting_for_continue = False
+                    elif event.key == pygame.K_ESCAPE:
+                        total_game_time = time.time() - game_start_time
+                        db_cursor.execute('UPDATE players SET total_game_time = ? WHERE id = ?',
+                                          (total_game_time, player_id))
+                        conn.commit()
+                        game_state = "start_screen"
+                        maze = None
+                        player_id = None
+                        waiting_for_continue = False
+
+            elif game_state == "score_screen":
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    return_button = pygame.Rect(WIDTH - 200, HEIGHT - 60, 180, 50)
+                    if return_button.collidepoint(event.pos):
+                        if maze:
+                            game_state = "game"
+                        else:
+                            game_state = "start_screen"
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    if game_state == "game":
+                        total_game_time = time.time() - game_start_time
+                        db_cursor.execute('UPDATE players SET total_game_time = ? WHERE id = ?',
+                                          (total_game_time, player_id))
+                        conn.commit()
+                        game_state = "start_screen"
+                    elif game_state == "score_screen":
+                        if maze:
+                            game_state = "game"
+                        else:
+                            game_state = "start_screen"
+
+        # Обновление угла для анимации прелоадера
+        preloader_angle += preloader_speed
+
+        if game_state == "start_screen":
+            screen.fill(BLACK)
+            title_text = font_large.render("Добро пожаловать в Генератор лабиринтов!", True, WHITE)
+            start_text = font_small.render("Нажмите 'Начать', чтобы продолжить.", True, WHITE)
+            start_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2, 200, 50)
+            pygame.draw.rect(screen, WHITE, start_button)
+            button_text = font_small.render("Начать", True, BLACK)
+            button_text_rect = button_text.get_rect(center=start_button.center)
+            screen.blit(button_text, button_text_rect)
+
+            score_list_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 60, 200, 50)
+            pygame.draw.rect(screen, WHITE, score_list_button)
+            score_list_text = font_small.render("Список очков", True, BLACK)
+            score_list_text_rect = score_list_text.get_rect(center=score_list_button.center)
+            screen.blit(score_list_text, score_list_text_rect)
+
+            screen.blit(title_text, (WIDTH // 2 - title_text.get_width() // 2, HEIGHT // 2 - 100))
+            screen.blit(start_text, (WIDTH // 2 - start_text.get_width() // 2, HEIGHT // 2 - 50))
+
+        elif game_state == "enter_name":
+            screen.fill(BLACK)
+            prompt_text = font_small.render("Введите ваше имя:", True, WHITE)
+            name_text = font_small.render(user_name, True, WHITE)
+            cursor_time = time.time() % 1
+            input_cursor = "|" if cursor_time < 0.5 else ""
+            cursor_text = font_small.render(input_cursor, True, WHITE)
+            screen.blit(prompt_text, (WIDTH // 2 - prompt_text.get_width() // 2, HEIGHT // 2 - 50))
+
+            input_box = pygame.Rect(WIDTH // 2 - 150, HEIGHT // 2 - 15, 300, 30)
+            pygame.draw.rect(screen, WHITE, input_box, 2)
+            name_text_pos = (input_box.x + 5, input_box.y + (input_box.height - name_text.get_height()) // 2)
+            screen.blit(name_text, name_text_pos)
+            cursor_text_pos = (name_text_pos[0] + name_text.get_width(), name_text_pos[1])
+            screen.blit(cursor_text, cursor_text_pos)
+
+        elif game_state == "enter_age":
+            screen.fill(BLACK)
+            prompt_text = font_small.render("Введите ваш возраст (полных лет):", True, WHITE)
+            age_text = font_small.render(user_age, True, WHITE)
+            cursor_time = time.time() % 1
+            input_cursor = "|" if cursor_time < 0.5 else ""
+            cursor_text = font_small.render(input_cursor, True, WHITE)
+            screen.blit(prompt_text, (WIDTH // 2 - prompt_text.get_width() // 2, HEIGHT // 2 - 50))
+
+            input_box = pygame.Rect(WIDTH // 2 - 150, HEIGHT // 2 - 15, 300, 30)
+            pygame.draw.rect(screen, WHITE, input_box, 2)
+            age_text_pos = (input_box.x + 5, input_box.y + (input_box.height - age_text.get_height()) // 2)
+            screen.blit(age_text, age_text_pos)
+            cursor_text_pos = (age_text_pos[0] + age_text.get_width(), age_text_pos[1])
+            screen.blit(cursor_text, cursor_text_pos)
+
+        elif game_state == "questionnaire":
+            screen.fill(BLACK)
+            question_text = font_small.render(questions[current_question_index][1], True, WHITE)
+            screen.blit(question_text, (WIDTH // 2 - question_text.get_width() // 2, HEIGHT // 2 - 100))
+
+            options = question_options[questions[current_question_index][0]]
+            button_height = 50
+            start_y = HEIGHT // 2 - (len(options) * button_height) // 2
+            for i, option in enumerate(options):
+                button = pygame.Rect(WIDTH // 2 - 100, start_y + i * button_height, 200, button_height - 10)
+                pygame.draw.rect(screen, WHITE, button)
+                option_text = font_small.render(option, True, BLACK)
+                option_text_rect = option_text.get_rect(center=button.center)
+                screen.blit(option_text, option_text_rect)
+
+        elif game_state == "loading_screen":
+            screen.fill(BLACK)
+            current_time = time.time()
+
+            # Отрисовка прелоадера
+            for i in range(preloader_num_dots):
+                dot_angle = preloader_angle + (i * (2 * math.pi / preloader_num_dots))
+                x = preloader_center_x + preloader_radius * math.cos(dot_angle)
+                y = preloader_center_y + preloader_radius * math.sin(dot_angle)
+                pygame.draw.circle(screen, WHITE, (int(x), int(y)), preloader_dot_radius)
+
+            if current_time - message_change_time > 1.5:
+                current_message = random.choice(messages)
+                message_change_time = current_time
+
+            message_text = font_large.render(current_message, True, WHITE)
+            screen.blit(message_text, (WIDTH // 2 - message_text.get_width() // 2, HEIGHT // 2 + preloader_radius + 30))
+
+            if current_time - loading_start > random.randint(5, 7):
+                game_state = "game"
+                cols = rows = level * 2 + 5
+                maze = Maze(cols, rows, level)
+                player_pos = [0, 0]
+                cell_size = min(WIDTH / cols, HEIGHT / rows)
+                start_time = time.time()
+                last_key_time = time.time()  # Сброс времени для реакции
+                reaction_times = []  # Сброс списка реакций
+                errors = 0  # Сброс счётчика ошибок
+
+        elif game_state == "game":
+            screen.fill(BLACK)
+            elapsed_time = time.time() - start_time
+
+            offset_x = (WIDTH - maze.cols * cell_size) / 2
+            offset_y = (HEIGHT - maze.rows * cell_size) / 2
+
+            for y in range(maze.rows):
+                for x in range(maze.cols):
+                    rect = pygame.Rect(int(offset_x + x * cell_size), int(offset_y + y * cell_size), int(cell_size),
+                                       int(cell_size))
+                    if maze.grid[y][x] == 1:
+                        pygame.draw.rect(screen, WHITE, rect)
+
+            start_rect = pygame.Rect(int(offset_x), int(offset_y), int(cell_size), int(cell_size))
+            pygame.draw.rect(screen, (0, 0, 255), start_rect)
+
+            exit_rect = pygame.Rect(int(offset_x + (maze.cols - 1) * cell_size),
+                                    int(offset_y + (maze.rows - 1) * cell_size), int(cell_size), int(cell_size))
+            pygame.draw.rect(screen, (0, 255, 0), exit_rect)
+
+            player_rect = pygame.Rect(int(offset_x + player_pos[0] * cell_size),
+                                      int(offset_y + player_pos[1] * cell_size), int(cell_size), int(cell_size))
+            pygame.draw.rect(screen, (255, 0, 0), player_rect)
+
+            # Отображение текущего уровня и времени
+            level_text = font_small.render(f"Уровень: {level}", True, WHITE)
+            time_text = font_small.render(f"Время: {int(elapsed_time)} сек", True, WHITE)
+            screen.blit(level_text, (10, 10))
+            screen.blit(time_text, (10, 40))
+
+            if player_pos == [maze.cols - 1, maze.rows - 1]:
+                level_score = int(1000 / (elapsed_time + 1) * level)
+                score += level_score
+                avg_reaction_time = sum(reaction_times) / len(reaction_times) if reaction_times else 0
+
+                # Сохранение статистики уровня в базу данных
+                db_cursor.execute(
+                    'INSERT INTO level_stats (player_id, level, completion_time, score, reaction_time_avg, errors_count) VALUES (?, ?, ?, ?, ?, ?)',
+                    (player_id, level, elapsed_time, level_score, avg_reaction_time, errors))
+                conn.commit()
+
+                # Обновление общей статистики игрока
+                db_cursor.execute(
+                    'UPDATE players SET total_time = ?, total_score = ?, level_reached = ?, avg_reaction_time = ?, total_errors = ? WHERE id = ?',
+                    (elapsed_time, score, level, avg_reaction_time, errors, player_id))
+                conn.commit()
+
+                # Переход к экрану продолжения
+                game_state = "continue_prompt"
+                pause_start_time = time.time()
+                waiting_for_continue = True
+                level += 1
+
+        elif game_state == "continue_prompt":
+            screen.fill(BLACK)
+            report_title = font_large.render("Уровень пройден!", True, WHITE)
+            continue_text = font_small.render("Хотите продолжить?", True, WHITE)
+            hint_text = font_tiny.render("Enter - Продолжить, Esc - Завершить", True, WHITE)
+            continue_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 50, 200, 50)
+            end_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 110, 200, 50)
+            pygame.draw.rect(screen, WHITE, continue_button)
+            pygame.draw.rect(screen, WHITE, end_button)
+            button_text_continue = font_small.render("Продолжить", True, BLACK)
+            button_text_end = font_small.render("Завершить", True, BLACK)
+            button_text_continue_rect = button_text_continue.get_rect(center=continue_button.center)
+            button_text_end_rect = button_text_end.get_rect(center=end_button.center)
+            screen.blit(report_title, (WIDTH // 2 - report_title.get_width() // 2, HEIGHT // 2 - 50))
+            screen.blit(continue_text, (WIDTH // 2 - continue_text.get_width() // 2, HEIGHT // 2))
+            screen.blit(hint_text, (WIDTH // 2 - hint_text.get_width() // 2, HEIGHT // 2 + 170))
+            screen.blit(button_text_continue, button_text_continue_rect)
+            screen.blit(button_text_end, button_text_end_rect)
+
+        elif game_state == "score_screen":
+            screen.fill(BLACK)
+            db_cursor.execute(
+                'SELECT id, name, total_score, state_self_assessment, age, total_game_time FROM players ORDER BY total_score DESC LIMIT 10')
+            records = db_cursor.fetchall()
+
+            y_offset = 50
+            title_text = font_large.render("Таблица рекордов", True, WHITE)
+            screen.blit(title_text, (WIDTH // 2 - title_text.get_width() // 2, 10))
+            for record in records:
+                time_str = f"{int(record[5])} сек" if record[5] is not None else "N/A"
+                record_text = font_small.render(
+                    f"{record[1]}: {record[2]} очков | Состояние: {record[3]} | Возраст: {record[4]} | Время игры: {time_str}",
+                    True, WHITE)
+                screen.blit(record_text, (50, y_offset))
+                y_offset += 30
+
+            return_button = pygame.Rect(WIDTH - 200, HEIGHT - 60, 180, 50)
+            pygame.draw.rect(screen, WHITE, return_button)
+            return_text = font_small.render("Вернуться", True, BLACK)
+            return_text_rect = return_text.get_rect(center=return_button.center)
+            screen.blit(return_text, return_text_rect)
+
+        pygame.display.flip()
+        clock.tick(60)
+
+    pygame.quit()
+    conn.close()
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+
